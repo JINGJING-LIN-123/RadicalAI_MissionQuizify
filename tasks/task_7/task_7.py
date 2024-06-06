@@ -1,9 +1,43 @@
 import streamlit as st
 from langchain_google_vertexai import VertexAI
 from langchain_core.prompts import PromptTemplate
+from langchain_community.vectorstores import Chroma
+from langchain.text_splitter import CharacterTextSplitter
 import os
 import sys
 sys.path.append(os.path.abspath('../../'))
+
+class ChromaCollectionCreator:
+    def __init__(self, processor, embed_model):
+        self.processor = processor
+        self.embed_model = embed_model
+        self.db = None
+
+    def create_chroma_collection(self):
+        if len(self.processor.pages) == 0:
+            st.error("No documents found!", icon="🚨")
+            return
+
+        text_splitter = CharacterTextSplitter(
+            separator="\n",
+            chunk_size=1000,
+            chunk_overlap=200
+        )
+
+        texts = text_splitter.split_documents(self.processor.pages)
+        if texts:
+            st.success(f"Successfully split pages to {len(texts)} documents!", icon="✅")
+
+        self.db = Chroma.from_documents(texts, self.embed_model)
+        if self.db:
+            st.success("Successfully created Chroma Collection!", icon="✅")
+        else:
+            st.error("Failed to create Chroma Collection!", icon="🚨")
+
+    def as_retriever(self):
+        if not self.db:
+            raise ValueError("Chroma collection has not been created!")
+        return self.db.as_retriever()
 
 class QuizGenerator:
     def __init__(self, topic=None, num_questions=1, vectorstore=None):
@@ -72,6 +106,9 @@ class QuizGenerator:
         """
         self.llm = VertexAI(
             ############# YOUR CODE HERE ############
+            model_name="gemini-pro",
+            temperature=0.7,
+            max_output_tokens=256
         )
         
     def generate_question_with_vectorstore(self):
@@ -102,18 +139,33 @@ class QuizGenerator:
         ############# YOUR CODE HERE ############
         # Initialize the LLM from the 'init_llm' method if not already initialized
         # Raise an error if the vectorstore is not initialized on the class
+
+        # 初始化 LLM 如果尚未初始化
+        if not self.llm:
+            self.init_llm()
+
+        # 如果 vectorstore 未初始化，抛出错误
+        if not self.vectorstore:
+            raise ValueError("Vectorstore is not initialized.")    
         ############# YOUR CODE HERE ############
+        
         
         from langchain_core.runnables import RunnablePassthrough, RunnableParallel
 
         ############# YOUR CODE HERE ############
         # Enable a Retriever using the as_retriever() method on the VectorStore object
         # HINT: Use the vectorstore as the retriever initialized on the class
+
+        # 启用 Retriever
+        retriever = self.vectorstore.db.as_retriever()
         ############# YOUR CODE HERE ############
         
         ############# YOUR CODE HERE ############
         # Use the system template to create a PromptTemplate
         # HINT: Use the .from_template method on the PromptTemplate class and pass in the system template
+
+        # 创建 PromptTemplate
+        prompt_template = PromptTemplate.from_template(self.system_template)
         ############# YOUR CODE HERE ############
         
         # RunnableParallel allows Retriever to get relevant documents
@@ -125,6 +177,8 @@ class QuizGenerator:
         ############# YOUR CODE HERE ############
         # Create a chain with the Retriever, PromptTemplate, and LLM
         # HINT: chain = RETRIEVER | PROMPT | LLM 
+
+        chain = setup_and_retrieval | prompt_template | self.llm
         ############# YOUR CODE HERE ############
 
         # Invoke the chain with the topic as input
@@ -141,7 +195,7 @@ if __name__ == "__main__":
     
     embed_config = {
         "model_name": "textembedding-gecko@003",
-        "project": "YOUR-PROJECT-ID-HERE",
+        "project": "sample-gemini-424119",
         "location": "us-central1"
     }
     
